@@ -1,0 +1,91 @@
+==================================================
+Revised Prompt 1 & 2 Test Suite
+==================================================
+
+Activating virtual environment...
+Running unit tests (no server required)...
+
+==================================================
+TEST MODULE 1: cloud_native_attacker persona
+==================================================
+============================= test session starts ==============================
+platform darwin -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /Users/bland/Desktop/swarm-tm/backend/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/bland/Desktop/swarm-tm
+plugins: anyio-4.13.0
+collecting ... collected 20 items
+
+tests/test_rp1_persona.py::TestPersonaExists::test_personas_file_exists PASSED [  5%]
+tests/test_rp1_persona.py::TestPersonaExists::test_cloud_native_attacker_exists PASSED [ 10%]
+tests/test_rp1_persona.py::TestPersonaExists::test_cloud_native_attacker_at_top PASSED [ 15%]
+tests/test_rp1_persona.py::TestPersonaRequiredFields::test_has_display_name PASSED [ 20%]
+tests/test_rp1_persona.py::TestPersonaRequiredFields::test_has_category PASSED [ 25%]
+tests/test_rp1_persona.py::TestPersonaRequiredFields::test_has_role PASSED [ 30%]
+tests/test_rp1_persona.py::TestPersonaRequiredFields::test_has_goal PASSED [ 35%]
+tests/test_rp1_persona.py::TestPersonaRequiredFields::test_has_backstory PASSED [ 40%]
+tests/test_rp1_persona.py::TestPersonaRequiredFields::test_has_ttp_focus PASSED [ 45%]
+tests/test_rp1_persona.py::TestPersonaRequiredFields::test_ttps_are_valid_attck_format PASSED [ 50%]
+tests/test_rp1_persona.py::TestPersonaRequiredFields::test_has_security_reasoning_approach PASSED [ 55%]
+tests/test_rp1_persona.py::TestPersonaRequiredFields::test_has_operational_style PASSED [ 60%]
+tests/test_rp1_persona.py::TestPersonaRequiredFields::test_is_protected_and_enabled PASSED [ 65%]
+tests/test_rp1_persona.py::TestReasoningApproachQuality::test_approach_mentions_identity_or_iam PASSED [ 70%]
+tests/test_rp1_persona.py::TestReasoningApproachQuality::test_approach_mentions_storage PASSED [ 75%]
+tests/test_rp1_persona.py::TestReasoningApproachQuality::test_approach_mentions_logging_or_detection PASSED [ 80%]
+tests/test_rp1_persona.py::TestReasoningApproachQuality::test_approach_mentions_relationships_or_chains PASSED [ 85%]
+tests/test_rp1_persona.py::TestReasoningApproachQuality::test_approach_is_generalisable PASSED [ 90%]
+tests/test_rp1_persona.py::TestPersonaIntegration::test_cloud_native_attacker_in_selector PASSED [ 95%]
+tests/test_rp1_persona.py::TestPersonaIntegration::test_prompt_builder_injects_reasoning_approach PASSED [100%]
+
+============================== 20 passed in 0.32s ==============================
+
+==================================================
+TEST MODULE 2: RP2 modules (selector/filter/consensus)
+==================================================
+============================= test session starts ==============================
+platform darwin -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /Users/bland/Desktop/swarm-tm/backend/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/bland/Desktop/swarm-tm
+plugins: anyio-4.13.0
+collecting ... collected 21 items
+
+tests/test_rp2_modules.py::TestPersonaSelector::test_module_exists PASSED [  4%]
+tests/test_rp2_modules.py::TestPersonaSelector::test_no_injection_when_no_findings PASSED [  9%]
+tests/test_rp2_modules.py::TestPersonaSelector::test_injection_when_confirmed_high_finding PASSED [ 14%]
+tests/test_rp2_modules.py::TestPersonaSelector::test_injection_when_high_signal PASSED [ 19%]
+tests/test_rp2_modules.py::TestPersonaSelector::test_no_injection_when_only_medium_findings PASSED [ 23%]
+tests/test_rp2_modules.py::TestPersonaSelector::test_single_run_capped_at_3 PASSED [ 28%]
+tests/test_rp2_modules.py::TestPersonaSelector::test_multi_run_not_capped PASSED [ 33%]
+tests/test_rp2_modules.py::TestPersonaSelector::test_priority_order_puts_specialist_first PASSED [ 38%]
+tests/test_rp2_modules.py::TestPersonaSelector::test_injection_is_dynamic_not_signal_specific PASSED [ 42%]
+tests/test_rp2_modules.py::TestOutputFilter::test_module_exists PASSED   [ 47%]
+tests/test_rp2_modules.py::TestOutputFilter::test_confirmed_grounded_path_always_included PASSED [ 52%]
+tests/test_rp2_modules.py::TestOutputFilter::test_speculative_path_filtered_by_score PASSED [ 57%]
+tests/test_rp2_modules.py::TestOutputFilter::test_speculative_path_passes_score_threshold PASSED [ 61%]
+tests/test_rp2_modules.py::TestOutputFilter::test_grounded_paths_ranked_before_speculative PASSED [ 66%]
+tests/test_rp2_modules.py::TestOutputFilter::test_confirmed_findings_summary_non_empty PASSED [ 71%]
+tests/test_rp2_modules.py::TestOutputFilter::test_confirmed_findings_summary_has_required_fields PASSED [ 76%]
+tests/test_rp2_modules.py::TestOutputFilter::test_filter_is_dynamic_not_type_specific PASSED [ 80%]
+tests/test_rp2_modules.py::TestConsensusAggregator::test_module_exists PASSED [ 85%]
+tests/test_rp2_modules.py::TestConsensusAggregator::test_aggregates_technique_counts PASSED [ 90%]
+tests/test_rp2_modules.py::TestConsensusAggregator::test_high_consensus_filtering PASSED [ 95%]
+tests/test_rp2_modules.py::TestConsensusAggregator::test_consensus_is_content_neutral PASSED [100%]
+
+============================== 21 passed in 0.02s ==============================
+
+==================================================
+Unit tests complete.
+==================================================
+
+To run integration tests (requires backend server):
+
+  1. Start backend server in another terminal:
+     cd /Users/bland/Desktop/swarm-tm
+     source backend/.venv/bin/activate
+     uvicorn app.main:app --port 8000 --app-dir backend
+
+  2. Run integration tests:
+     python -m pytest tests/test_rp2_integration.py -v --tb=short
+
+Integration tests validate all 4 run types surface
+confirmed findings dynamically for the same IaC input.
+

@@ -1,0 +1,47 @@
+# Swarm TM Backend - Docker Compose Configuration
+# Python FastAPI + CrewAI threat modeling engine
+
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: swarm-tm-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM Provider Configuration
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK}
+      - AWS_REGION_NAME=${AWS_REGION_NAME:-us-east-1}
+      - BEDROCK_MODEL=${BEDROCK_MODEL:-bedrock/anthropic.claude-sonnet-4-20250514-v1:0}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:14b}
+      # CORS Configuration (allow frontend origins)
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      # Database
+      - DATABASE_URL=sqlite:///data/swarm_tm.db
+    volumes:
+      # Persist database and STIX data
+      - backend-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - swarm-network
+
+volumes:
+  # Named volume for persistent backend data
+  backend-data:
+    driver: local
+
+networks:
+  # Internal network for service communication
+  swarm-network:
+    driver: bridge

@@ -1,0 +1,60 @@
+Confirmed Findings Surface Verification
+Validates that high-confidence findings from
+VulnMatcher appear in all four run type outputs.
+No specific attack type checks are performed.
+
+====================================================
+Run type: Single agent
+Endpoint: POST /api/swarm/run/single
+  [FAIL] confirmed_findings: 0 entries
+  [FAIL] attack_paths: 0 paths
+  [MISS] grounded paths present
+  [INFO] specialist persona injection: none
+  ISSUE: confirmed_findings is empty — VulnMatcher produced no CONFIRMED findings for this IaC
+  ISSUE: attack_paths/final_paths is empty
+  OVERALL: FAIL
+
+====================================================
+Run type: 2 agents test
+Endpoint: POST /api/swarm/run/quick
+  [FAIL] confirmed_findings: 0 entries
+  [FAIL] attack_paths: 0 paths
+  [MISS] grounded paths present
+  [INFO] specialist persona injection: none
+  ISSUE: confirmed_findings is empty — VulnMatcher produced no CONFIRMED findings for this IaC
+  ISSUE: attack_paths/final_paths is empty
+  OVERALL: FAIL
+
+====================================================
+Run type: Multi-agents run
+Endpoint: POST /api/swarm/run
+  [FAIL] confirmed_findings: 0 entries
+  [FAIL] attack_paths: 0 paths
+  [MISS] grounded paths present
+  ISSUE: confirmed_findings is empty — VulnMatcher produced no CONFIRMED findings for this IaC
+  ISSUE: attack_paths/final_paths is empty
+  OVERALL: FAIL
+
+====================================================
+Run type: Swarm run
+Endpoint: POST /api/swarm/run/stigmergic
+  [FAIL] confirmed_findings: 0 entries
+  [FAIL] attack_paths: 0 paths
+  [MISS] grounded paths present
+  ISSUE: confirmed_findings is empty — VulnMatcher produced no CONFIRMED findings for this IaC
+  ISSUE: attack_paths/final_paths is empty
+  OVERALL: FAIL
+
+====================================================
+SUMMARY
+  [FAIL] Single agent
+  [FAIL] 2 agents test
+  [FAIL] Multi-agents run
+  [FAIL] Swarm run
+
+Some run types not surfacing confirmed findings.
+Investigate:
+  1. VulnContextBuilder running before agents
+  2. output_filter.py wired after agent runs
+  3. persona_selector.py using correct thresholds
+  4. confirmed_findings added to response dict

@@ -1,0 +1,80 @@
+sources:
+- name: NVD CVE Feed
+  adapter: nvd_cve
+  enabled: true
+  refresh_minutes: 60
+  config:
+    api_url: https://services.nvd.nist.gov/rest/json/cves/2.0
+    results_per_page: 20
+- name: The Hacker News
+  adapter: hackernews_rss
+  enabled: true
+  refresh_minutes: 30
+  config:
+    feed_url: https://feeds.feedburner.com/TheHackersNews
+- name: MITRE ATT&CK
+  adapter: attack_stix
+  enabled: true
+  refresh_minutes: 1440
+  config:
+    stix_url: https://raw.githubusercontent.com/mitre/cti/master/enterprise-attack/enterprise-attack.json
+- name: News4Hackers
+  adapter: hackernews_rss
+  enabled: false
+  refresh_minutes: 30
+  config:
+    feed_url: https://www.news4hackers.com/feed/
+- name: SecurityWeek
+  adapter: hackernews_rss
+  enabled: false
+  refresh_minutes: 30
+  config:
+    feed_url: https://www.securityweek.com/feed/
+- name: Dark Reading
+  adapter: hackernews_rss
+  enabled: true
+  refresh_minutes: 30
+  config:
+    feed_url: https://www.darkreading.com/rss.xml
+- name: Krebs on Security
+  adapter: hackernews_rss
+  enabled: false
+  refresh_minutes: 30
+  config:
+    feed_url: https://krebsonsecurity.com/feed/
+- name: BleepingComputer
+  adapter: hackernews_rss
+  enabled: true
+  refresh_minutes: 30
+  config:
+    feed_url: https://www.bleepingcomputer.com/feed/
+- name: Cybersecurity News
+  adapter: hackernews_rss
+  enabled: false
+  refresh_minutes: 30
+  config:
+    feed_url: https://cybersecuritynews.com/feed/
+- name: CSO Online
+  adapter: hackernews_rss
+  enabled: false
+  refresh_minutes: 30
+  config:
+    feed_url: https://www.csoonline.com/feed/
+- name: Threatpost
+  adapter: hackernews_rss
+  enabled: true
+  refresh_minutes: 30
+  config:
+    feed_url: https://threatpost.com/feed/
+- name: Ars Technica Security
+  adapter: hackernews_rss
+  enabled: false
+  refresh_minutes: 30
+  config:
+    feed_url: https://arstechnica.com/security/feed/
+- name: Simon Willison
+  adapter: hackernews_rss
+  enabled: false
+  refresh_minutes: 60
+  config:
+    feed_url: https://simonwillison.net/atom/everything/

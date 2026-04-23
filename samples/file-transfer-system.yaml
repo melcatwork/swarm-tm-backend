@@ -1,0 +1,945 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Managed File Transfer Platform - External SFTP uploads with Lambda processing and internal web portal'
+
+Parameters:
+  VpcCidr:
+    Type: String
+    Default: '10.0.0.0/16'
+    Description: CIDR block for VPC
+
+  Environment:
+    Type: String
+    Default: 'production'
+    Description: Environment name
+
+  PartnerCidr:
+    Type: String
+    Default: '203.0.113.0/24'
+    Description: Partner network CIDR for SFTP access
+
+Resources:
+  # VPC and Networking
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: file-transfer-vpc
+        - Key: Environment
+          Value: !Ref Environment
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.0.1.0/24'
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: file-transfer-public-1
+        - Key: Environment
+          Value: !Ref Environment
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.0.2.0/24'
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: file-transfer-public-2
+        - Key: Environment
+          Value: !Ref Environment
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.0.10.0/24'
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: file-transfer-private-1
+        - Key: Environment
+          Value: !Ref Environment
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.0.11.0/24'
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: file-transfer-private-2
+        - Key: Environment
+          Value: !Ref Environment
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: file-transfer-igw
+        - Key: Environment
+          Value: !Ref Environment
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: file-transfer-nat-eip
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: file-transfer-nat
+        - Key: Environment
+          Value: !Ref Environment
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: file-transfer-public-rt
+        - Key: Environment
+          Value: !Ref Environment
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: file-transfer-private-rt
+        - Key: Environment
+          Value: !Ref Environment
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Security Groups
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Application Load Balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: '0.0.0.0/0'
+          Description: HTTPS from anywhere
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '0.0.0.0/0'
+          Description: HTTP from anywhere
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: file-transfer-alb-sg
+        - Key: Environment
+          Value: !Ref Environment
+
+  SFTPSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for AWS Transfer Family SFTP
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref PartnerCidr
+          Description: SFTP from partner network
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: file-transfer-sftp-sg
+        - Key: Environment
+          Value: !Ref Environment
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ECS tasks
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: Allow traffic from ALB
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: file-transfer-ecs-sg
+        - Key: Environment
+          Value: !Ref Environment
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS PostgreSQL
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+          Description: PostgreSQL from ECS
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+          Description: PostgreSQL from Lambda
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: file-transfer-rds-sg
+        - Key: Environment
+          Value: !Ref Environment
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Lambda function
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: file-transfer-lambda-sg
+        - Key: Environment
+          Value: !Ref Environment
+
+  # S3 Buckets
+  IncomingFilesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'file-transfer-incoming-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt FileProcessorFunction.Arn
+      Tags:
+        - Key: Name
+          Value: file-transfer-incoming
+        - Key: Environment
+          Value: !Ref Environment
+
+  ProcessedFilesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'file-transfer-processed-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: file-transfer-processed
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Lambda Function
+  FileProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: file-processor
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Environment:
+        Variables:
+          PROCESSED_BUCKET: !Ref ProcessedFilesBucket
+          METADATA_TABLE: !Ref FileMetadataTable
+          SNS_TOPIC_ARN: !Ref NotificationTopic
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          from datetime import datetime
+
+          s3 = boto3.client('s3')
+          dynamodb = boto3.resource('dynamodb')
+          sns = boto3.client('sns')
+
+          def handler(event, context):
+              for record in event['Records']:
+                  bucket = record['s3']['bucket']['name']
+                  key = record['s3']['object']['key']
+
+                  try:
+                      # Get file metadata
+                      response = s3.head_object(Bucket=bucket, Key=key)
+                      file_size = response['ContentLength']
+
+                      # Store metadata in DynamoDB
+                      table = dynamodb.Table(os.environ['METADATA_TABLE'])
+                      table.put_item(
+                          Item={
+                              'file_id': key,
+                              'upload_time': datetime.utcnow().isoformat(),
+                              'file_size': file_size,
+                              'status': 'processing',
+                              'source_bucket': bucket
+                          }
+                      )
+
+                      # Copy to processed bucket
+                      processed_bucket = os.environ['PROCESSED_BUCKET']
+                      s3.copy_object(
+                          CopySource={'Bucket': bucket, 'Key': key},
+                          Bucket=processed_bucket,
+                          Key=key
+                      )
+
+                      # Update status
+                      table.update_item(
+                          Key={'file_id': key},
+                          UpdateExpression='SET #status = :status',
+                          ExpressionAttributeNames={'#status': 'status'},
+                          ExpressionAttributeValues={':status': 'completed'}
+                      )
+
+                      # Send SNS notification
+                      sns.publish(
+                          TopicArn=os.environ['SNS_TOPIC_ARN'],
+                          Subject='File Processing Complete',
+                          Message=f'File {key} has been processed successfully'
+                      )
+
+                  except Exception as e:
+                      print(f'Error processing {key}: {str(e)}')
+                      # Update status to failed
+                      table.update_item(
+                          Key={'file_id': key},
+                          UpdateExpression='SET #status = :status, error_message = :error',
+                          ExpressionAttributeNames={'#status': 'status'},
+                          ExpressionAttributeValues={
+                              ':status': 'failed',
+                              ':error': str(e)
+                          }
+                      )
+                      raise
+
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Processing complete')
+              }
+      Tags:
+        - Key: Name
+          Value: file-processor
+        - Key: Environment
+          Value: !Ref Environment
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref FileProcessorFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt IncomingFilesBucket.Arn
+
+  # DynamoDB Table
+  FileMetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: file-metadata
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: file_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: file_id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Name
+          Value: file-metadata
+        - Key: Environment
+          Value: !Ref Environment
+
+  # IAM Roles
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: file-processor-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: LambdaS3DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt IncomingFilesBucket.Arn
+                  - !Sub '${IncomingFilesBucket.Arn}/*'
+                  - !GetAtt ProcessedFilesBucket.Arn
+                  - !Sub '${ProcessedFilesBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: !GetAtt FileMetadataTable.Arn
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref NotificationTopic
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+      Tags:
+        - Key: Name
+          Value: file-processor-lambda-role
+        - Key: Environment
+          Value: !Ref Environment
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: file-transfer-ecs-execution-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Tags:
+        - Key: Name
+          Value: file-transfer-ecs-execution-role
+        - Key: Environment
+          Value: !Ref Environment
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: file-transfer-ecs-task-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ECSTaskS3DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:PutObject
+                Resource:
+                  - !GetAtt IncomingFilesBucket.Arn
+                  - !Sub '${IncomingFilesBucket.Arn}/*'
+                  - !GetAtt ProcessedFilesBucket.Arn
+                  - !Sub '${ProcessedFilesBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt FileMetadataTable.Arn
+      Tags:
+        - Key: Name
+          Value: file-transfer-ecs-task-role
+        - Key: Environment
+          Value: !Ref Environment
+
+  TransferUserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: transfer-user-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: transfer.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TransferS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt IncomingFilesBucket.Arn
+                  - !Sub '${IncomingFilesBucket.Arn}/*'
+      Tags:
+        - Key: Name
+          Value: transfer-user-role
+        - Key: Environment
+          Value: !Ref Environment
+
+  TransferLoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: transfer-logging-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: transfer.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSTransferLoggingAccess
+      Tags:
+        - Key: Name
+          Value: transfer-logging-role
+        - Key: Environment
+          Value: !Ref Environment
+
+  # AWS Transfer Family SFTP Server
+  TransferServer:
+    Type: AWS::Transfer::Server
+    Properties:
+      EndpointType: VPC
+      EndpointDetails:
+        VpcId: !Ref VPC
+        SubnetIds:
+          - !Ref PublicSubnet1
+          - !Ref PublicSubnet2
+        SecurityGroupIds:
+          - !Ref SFTPSecurityGroup
+      Protocols:
+        - SFTP
+      IdentityProviderType: SERVICE_MANAGED
+      LoggingRole: !GetAtt TransferLoggingRole.Arn
+      Tags:
+        - Key: Name
+          Value: file-transfer-sftp
+        - Key: Environment
+          Value: !Ref Environment
+
+  TransferUser:
+    Type: AWS::Transfer::User
+    Properties:
+      ServerId: !GetAtt TransferServer.ServerId
+      UserName: partner-user
+      HomeDirectory: !Sub '/${IncomingFilesBucket}'
+      HomeDirectoryType: PATH
+      Role: !GetAtt TransferUserRole.Arn
+      Tags:
+        - Key: Name
+          Value: partner-user
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: file-transfer-cluster
+      Tags:
+        - Key: Name
+          Value: file-transfer-cluster
+        - Key: Environment
+          Value: !Ref Environment
+
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: file-transfer-portal
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: portal
+          Image: nginx:latest
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt RDSInstance.Endpoint.Address
+            - Name: DB_PORT
+              Value: '5432'
+            - Name: DB_NAME
+              Value: filemanager
+            - Name: DB_USER
+              Value: admin
+            - Name: DB_PASSWORD
+              Value: ChangeMe123!
+            - Name: INCOMING_BUCKET
+              Value: !Ref IncomingFilesBucket
+            - Name: PROCESSED_BUCKET
+              Value: !Ref ProcessedFilesBucket
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ECSLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: portal
+      Tags:
+        - Key: Name
+          Value: file-transfer-portal
+        - Key: Environment
+          Value: !Ref Environment
+
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      ServiceName: file-transfer-portal-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref ECSTaskDefinition
+      DesiredCount: 2
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      LoadBalancers:
+        - ContainerName: portal
+          ContainerPort: 8080
+          TargetGroupArn: !Ref ALBTargetGroup
+      HealthCheckGracePeriodSeconds: 60
+      Tags:
+        - Key: Name
+          Value: file-transfer-portal-service
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: file-transfer-alb
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: file-transfer-alb
+        - Key: Environment
+          Value: !Ref Environment
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: file-transfer-tg
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Tags:
+        - Key: Name
+          Value: file-transfer-tg
+        - Key: Environment
+          Value: !Ref Environment
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: arn:aws:acm:us-east-1:123456789012:certificate/placeholder
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # CloudFront Distribution
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: CloudFront distribution for file transfer portal
+        Origins:
+          - Id: ALBOrigin
+            DomainName: !GetAtt ApplicationLoadBalancer.DNSName
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+                - TLSv1.2
+        DefaultCacheBehavior:
+          TargetOriginId: ALBOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+            - PUT
+            - POST
+            - PATCH
+            - DELETE
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          ForwardedValues:
+            QueryString: true
+            Cookies:
+              Forward: all
+            Headers:
+              - '*'
+          MinTTL: 0
+          DefaultTTL: 0
+          MaxTTL: 0
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+      Tags:
+        - Key: Name
+          Value: file-transfer-cloudfront
+        - Key: Environment
+          Value: !Ref Environment
+
+  # RDS PostgreSQL
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: file-transfer-db-subnet-group
+      DBSubnetGroupDescription: Subnet group for RDS instance
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: file-transfer-db-subnet-group
+        - Key: Environment
+          Value: !Ref Environment
+
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: file-transfer-db
+      Engine: postgres
+      EngineVersion: '15.4'
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: '20'
+      StorageType: gp3
+      StorageEncrypted: true
+      MasterUsername: admin
+      MasterUserPassword: ChangeMe123!
+      DBName: filemanager
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      MultiAZ: true
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: 03:00-04:00
+      PreferredMaintenanceWindow: mon:04:00-mon:05:00
+      EnableCloudwatchLogsExports:
+        - postgresql
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: file-transfer-db
+        - Key: Environment
+          Value: !Ref Environment
+
+  # SNS Topic
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: file-transfer-notifications
+      DisplayName: File Transfer Notifications
+      Tags:
+        - Key: Name
+          Value: file-transfer-notifications
+        - Key: Environment
+          Value: !Ref Environment
+
+  # CloudWatch Log Group
+  ECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/file-transfer-portal
+      RetentionInDays: 7
+
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: file-transfer-vpc-id
+
+  ALBDNSName:
+    Description: Application Load Balancer DNS name
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: file-transfer-alb-dns
+
+  CloudFrontDomain:
+    Description: CloudFront distribution domain name
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Export:
+      Name: file-transfer-cloudfront-domain
+
+  TransferServerEndpoint:
+    Description: AWS Transfer Family SFTP endpoint
+    Value: !GetAtt TransferServer.ServerId
+    Export:
+      Name: file-transfer-sftp-endpoint
+
+  IncomingBucketName:
+    Description: S3 bucket for incoming files
+    Value: !Ref IncomingFilesBucket
+    Export:
+      Name: file-transfer-incoming-bucket
+
+  ProcessedBucketName:
+    Description: S3 bucket for processed files
+    Value: !Ref ProcessedFilesBucket
+    Export:
+      Name: file-transfer-processed-bucket
+
+  DatabaseEndpoint:
+    Description: RDS PostgreSQL endpoint
+    Value: !GetAtt RDSInstance.Endpoint.Address
+    Export:
+      Name: file-transfer-db-endpoint

