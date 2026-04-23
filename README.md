@@ -338,6 +338,136 @@ railway up
 
 The `Procfile` is configured for automatic Railway deployment.
 
+### Zeabur Deployment
+
+Zeabur provides one-click deployment with automatic HTTPS and environment variable management.
+
+#### Option 1: Deploy via GitHub Integration (Recommended)
+
+1. **Push to GitHub** (already done):
+   ```
+   https://github.com/melcatwork/swarm-tm-backend
+   ```
+
+2. **Create New Project on Zeabur**:
+   - Go to https://dash.zeabur.com
+   - Click "Create Project"
+   - Select "Deploy from GitHub"
+   - Authorize Zeabur to access your GitHub account
+   - Select repository: `melcatwork/swarm-tm-backend`
+   - Click "Deploy"
+
+3. **Configure Environment Variables**:
+   In Zeabur dashboard → Your Service → Environment Variables, add:
+   
+   **Required:**
+   ```bash
+   LLM_PROVIDER=ollama           # or bedrock, anthropic
+   OLLAMA_BASE_URL=http://host.docker.internal:11434  # if using Ollama
+   OLLAMA_MODEL=qwen3.5:27b
+   CORS_ORIGINS=https://your-frontend.zeabur.app,http://localhost:5173
+   ```
+   
+   **For AWS Bedrock:**
+   ```bash
+   LLM_PROVIDER=bedrock
+   AWS_BEARER_TOKEN_BEDROCK=your-bedrock-api-key
+   AWS_REGION_NAME=us-east-1
+   BEDROCK_MODEL=bedrock/anthropic.claude-sonnet-4-20250514-v1:0
+   CORS_ORIGINS=https://your-frontend.zeabur.app
+   ```
+   
+   **For Anthropic API:**
+   ```bash
+   LLM_PROVIDER=anthropic
+   ANTHROPIC_API_KEY=sk-ant-your-key-here
+   ANTHROPIC_MODEL=claude-sonnet-4-20250514
+   CORS_ORIGINS=https://your-frontend.zeabur.app
+   ```
+   
+   **Optional:**
+   ```bash
+   NVD_API_KEY=your-nvd-api-key
+   GITHUB_TOKEN=your-github-token
+   ENABLE_CVE_LOOKUP=true
+   ```
+
+4. **Verify Deployment**:
+   - Zeabur will auto-detect Python and install dependencies
+   - Check logs in Zeabur dashboard for any errors
+   - Once deployed, Zeabur provides a URL like: `https://swarm-tm-backend-xxx.zeabur.app`
+   - Test: `curl https://your-backend-url.zeabur.app/api/health`
+
+5. **Enable Custom Domain** (Optional):
+   - Go to Service → Domains
+   - Add custom domain: `api.yourdomain.com`
+   - Configure DNS CNAME record pointing to Zeabur
+
+#### Option 2: Deploy via Zeabur CLI
+
+```bash
+# Install Zeabur CLI
+npm i -g @zeabur/cli
+
+# Login to Zeabur
+zeabur auth login
+
+# Navigate to backend directory
+cd swarm-tm-backend
+
+# Deploy
+zeabur deploy
+
+# Set environment variables
+zeabur env set LLM_PROVIDER=anthropic
+zeabur env set ANTHROPIC_API_KEY=sk-ant-your-key
+zeabur env set CORS_ORIGINS=https://your-frontend.zeabur.app
+```
+
+#### Important Notes for Zeabur
+
+**1. Ollama on Zeabur:**
+- Ollama requires GPU which may not be available on Zeabur's free tier
+- **Recommended**: Use Anthropic API or AWS Bedrock for production
+- If you need Ollama, consider Railway or self-hosted Docker
+
+**2. CORS Configuration:**
+- Update `CORS_ORIGINS` with your deployed frontend URL
+- Example: `CORS_ORIGINS=https://swarm-tm-frontend-xxx.zeabur.app`
+- Multiple origins: `CORS_ORIGINS=https://frontend.zeabur.app,https://yourdomain.com`
+
+**3. Database Persistence:**
+- Zeabur provides persistent storage for SQLite database
+- Data survives redeployments
+- Volume path: `/app/data` (automatically mounted)
+
+**4. Logs and Monitoring:**
+- View logs: Zeabur Dashboard → Service → Logs
+- Monitor resource usage: Dashboard → Metrics
+- Set up alerts for errors or high CPU usage
+
+**5. Automatic Redeployment:**
+- Push to GitHub triggers automatic redeployment
+- Zero-downtime deployments with health checks
+- Rollback available in dashboard if issues occur
+
+#### Troubleshooting Zeabur Deployment
+
+**Build Fails:**
+- Check logs in Zeabur dashboard
+- Verify `requirements.txt` has all dependencies
+- Ensure Python version compatible (3.11+)
+
+**Backend Unreachable:**
+- Verify service is running (check status in dashboard)
+- Test health endpoint: `curl https://your-url.zeabur.app/api/health`
+- Check environment variables are set correctly
+
+**LLM Provider Errors:**
+- Verify API keys are correct in environment variables
+- Check LLM_PROVIDER matches your configuration
+- Test locally first: `uvicorn app.main:app --reload`
+
 ---
 
 ## Troubleshooting
