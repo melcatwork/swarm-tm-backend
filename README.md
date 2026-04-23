@@ -342,6 +342,8 @@ The `Procfile` is configured for automatic Railway deployment.
 
 Zeabur provides one-click deployment with automatic HTTPS and environment variable management.
 
+**📄 Automatic Configuration**: This repository includes `zeabur.yml` which automatically configures deployment settings, environment variables, health checks, and resource limits. Zeabur will use this configuration when you deploy.
+
 #### Option 1: Deploy via GitHub Integration (Recommended)
 
 1. **Push to GitHub** (already done):
