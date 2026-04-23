@@ -1,0 +1,102 @@
+# Zeabur Configuration for Swarm TM Backend
+# Python FastAPI + CrewAI multi-agent threat modeling engine
+
+name: swarm-tm-backend
+
+services:
+  - name: backend
+    type: python
+
+    # Build Configuration
+    build:
+      # Python version
+      runtime: python-3.11
+
+      # Install command
+      install: pip install -r requirements.txt
+
+      # Start command (uses uvicorn for FastAPI)
+      start: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+    # Environment Variables
+    # Note: Sensitive values should be set in Zeabur Dashboard for security
+    env:
+      # LLM Provider Configuration (choose one)
+      LLM_PROVIDER: ollama  # Options: ollama, bedrock, anthropic
+
+      # Ollama Configuration (local LLM - requires GPU)
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: qwen3.5:27b
+
+      # AWS Bedrock Configuration (uncomment if using)
+      # AWS_BEARER_TOKEN_BEDROCK: ${AWS_BEARER_TOKEN_BEDROCK}
+      # AWS_REGION_NAME: us-east-1
+      # BEDROCK_MODEL: bedrock/anthropic.claude-sonnet-4-20250514-v1:0
+
+      # Anthropic API Configuration (uncomment if using)
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # ANTHROPIC_MODEL: claude-sonnet-4-20250514
+
+      # CORS Configuration (update with your frontend URL after deployment)
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+
+      # Optional: Threat Intelligence
+      # NVD_API_KEY: ${NVD_API_KEY}
+      # GITHUB_TOKEN: ${GITHUB_TOKEN}
+      ENABLE_CVE_LOOKUP: true
+
+      # Database
+      DATABASE_URL: sqlite:///data/swarm_tm.db
+
+    # Port Configuration
+    port: 8000
+
+    # Health Check
+    healthCheck:
+      path: /api/health
+      interval: 30
+      timeout: 10
+      retries: 3
+
+    # Resource Configuration
+    resources:
+      # Adjust based on your tier
+      # Backend needs adequate resources for LLM operations
+      cpu: 1
+      memory: 2048  # 2GB RAM minimum
+
+    # Volume Configuration (for persistent data)
+    volumes:
+      - name: backend-data
+        mountPath: /app/data
+        size: 1  # 1GB for SQLite DB and STIX cache
+
+    # Deployment Strategy
+    deployment:
+      # Zero-downtime deployment
+      strategy: rolling
+
+      # Auto-restart on failure
+      restartPolicy: always
+
+      # Scaling (adjust based on tier)
+      replicas: 1
+
+# Instructions for deployment:
+#
+# 1. Update LLM Provider Configuration:
+#    - For Ollama: Set LLM_PROVIDER=ollama (requires GPU tier)
+#    - For Bedrock: Set LLM_PROVIDER=bedrock and AWS_BEARER_TOKEN_BEDROCK in Zeabur Dashboard
+#    - For Anthropic: Set LLM_PROVIDER=anthropic and ANTHROPIC_API_KEY in Zeabur Dashboard
+#
+# 2. Update CORS_ORIGINS after frontend deployment:
+#    - Replace with your deployed frontend URL
+#    - Example: CORS_ORIGINS=https://swarm-tm-frontend-xxx.zeabur.app
+#
+# 3. Set sensitive environment variables in Zeabur Dashboard:
+#    - Dashboard → Service → Environment Variables
+#    - Never commit API keys to version control
+#
+# 4. Deploy:
+#    - Push to GitHub or use Zeabur CLI
+#    - Zeabur will automatically use this configuration
