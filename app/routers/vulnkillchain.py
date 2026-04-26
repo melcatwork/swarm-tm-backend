@@ -226,46 +226,6 @@ async def search_cves(
             raise HTTPException(status_code=502, detail=f"NVD API error: {str(e)}")
 
 
-@router.get("/{cve_id}")
-async def get_cve_details(cve_id: str) -> Dict[str, Any]:
-    """Get detailed info for a specific CVE"""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.get(f"{NVD_API_URL}?cveId={cve_id}")
-            response.raise_for_status()
-            data = response.json()
-
-            if not data.get("vulnerabilities"):
-                raise HTTPException(status_code=404, detail=f"CVE {cve_id} not found")
-
-            cve = data["vulnerabilities"][0]["cve"]
-
-            # Extract metrics
-            metrics = cve.get("metrics", {})
-            cvss = metrics.get("cvssMetricV31", [{}])[0].get("cvssData", {}) if metrics.get("cvssMetricV31") else metrics.get("cvssMetricV30", [{}])[0].get("cvssData", {})
-
-            return {
-                "id": cve.get("id"),
-                "description": cve.get("descriptions", [{}])[0].get("value", ""),
-                "cvss_score": cvss.get("baseScore"),
-                "severity": cvss.get("baseSeverity"),
-                "vector": cvss.get("vectorString"),
-                "published": cve.get("published"),
-                "modified": cve.get("lastModified"),
-                "references": [
-                    {"url": ref.get("url"), "source": ref.get("source")}
-                    for ref in cve.get("references", [])
-                ],
-                "weaknesses": [
-                    w.get("description", [{}])[0].get("value")
-                    for w in cve.get("weaknesses", [])
-                ]
-            }
-
-        except httpx.HTTPError:
-            raise HTTPException(status_code=404, detail=f"CVE {cve_id} not found")
-
-
 @router.get("/attack/{cve_id}")
 async def get_attack_mapping(cve_id: str) -> Dict[str, Any]:
     """
@@ -860,3 +820,75 @@ def generate_mermaid_killchain(cve_id: str, kill_chain: List[Dict]) -> str:
         lines.append(f"    linkStyle {i} stroke:#000000,stroke-width:3px")
 
     return "\n".join(lines)
+
+
+@router.get("/{cve_id}")
+async def get_cve_details(cve_id: str):
+    """
+    Get detailed information about a specific CVE.
+
+    Returns CVE description, CVSS score, severity, published date, and CWE info.
+    """
+    try:
+        # Validate CVE ID format (CVE-YYYY-NNNNN)
+        if not cve_id.startswith("CVE-"):
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Invalid CVE ID format: {cve_id}"}
+            )
+
+        # Fetch CVE data from NVD
+        url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={cve_id}"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+
+        # Extract CVE details
+        if not data.get("vulnerabilities"):
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"CVE not found: {cve_id}"}
+            )
+
+        cve_item = data["vulnerabilities"][0]["cve"]
+
+        # Get CVSS score (prioritize v3.1, fallback to v3.0, then v2.0)
+        cvss_score = 0.0
+        severity = "Unknown"
+
+        metrics = cve_item.get("metrics", {})
+        if metrics.get("cvssMetricV31"):
+            cvss_data = metrics["cvssMetricV31"][0]["cvssData"]
+            cvss_score = cvss_data.get("baseScore", 0.0)
+            severity = cvss_data.get("baseSeverity", "Unknown")
+        elif metrics.get("cvssMetricV30"):
+            cvss_data = metrics["cvssMetricV30"][0]["cvssData"]
+            cvss_score = cvss_data.get("baseScore", 0.0)
+            severity = cvss_data.get("baseSeverity", "Unknown")
+        elif metrics.get("cvssMetricV2"):
+            cvss_data = metrics["cvssMetricV2"][0]["cvssData"]
+            cvss_score = cvss_data.get("baseScore", 0.0)
+            severity = "MEDIUM" if cvss_score >= 4.0 else "LOW"
+
+        return {
+            "cve_id": cve_id,
+            "description": cve_item.get("descriptions", [{}])[0].get("value", "No description available"),
+            "cvss_score": cvss_score,
+            "severity": severity,
+            "published_date": cve_item.get("published", "Unknown"),
+            "last_modified": cve_item.get("lastModified", "Unknown"),
+            "cwe": cve_item.get("weaknesses", [{}])[0].get("description", [{}])[0].get("value", "N/A") if cve_item.get("weaknesses") else "N/A"
+        }
+
+    except httpx.HTTPStatusError as e:
+        return JSONResponse(
+            status_code=e.response.status_code,
+            content={"error": f"NVD API error: {str(e)}"}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to fetch CVE details: {str(e)}"}
+        )
