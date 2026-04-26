@@ -4,17 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-# Swarm TM Backend
+# Swarm TM Backend (Unified with VulnKillChain)
 
-Python FastAPI + CrewAI multi-agent threat modeling engine.
+Python FastAPI + CrewAI multi-agent threat modeling engine with integrated CVE intelligence.
 
 **Repository**: https://github.com/redcountryroad/swarm-tm-backend (split from monorepo 2026-04-23)  
 **Frontend**: https://github.com/redcountryroad/swarm-tm-frontend
 
 ## Project Structure
 
-Backend-only repository:
+Unified backend repository:
 - `app/` — FastAPI application, routers, parsers, swarm orchestration
+  - `routers/vulnkillchain.py` — **NEW**: CVE intelligence endpoints
 - `data/` — SQLite DB, STIX cache, persona YAML
 - `samples/` — Test IaC files for threat modeling
 - `tests/` — Backend tests
@@ -102,3 +103,61 @@ This backend is designed to work with the Swarm TM frontend:
 - Repository: https://github.com/redcountryroad/swarm-tm-frontend
 - Set CORS_ORIGINS in .env to allow frontend domain
 - Frontend expects backend at http://localhost:8000 by default
+
+## CVE Intelligence Endpoints (NEW)
+
+Unified backend now includes CVE intelligence capabilities under `/api/cve/*` prefix:
+
+### Endpoints
+
+```bash
+# Health check
+curl http://localhost:8000/api/cve/health
+
+# Search CVEs by product
+curl "http://localhost:8000/api/cve/search?product=log4j&limit=10"
+
+# Get CVE details
+curl http://localhost:8000/api/cve/CVE-2021-44228
+
+# Get MITRE ATT&CK kill chain mapping
+curl http://localhost:8000/api/cve/attack/CVE-2021-44228
+
+# Get CISA Known Exploited Vulnerabilities
+curl "http://localhost:8000/api/cve/cisa-kev/list?limit=20"
+
+# Get EPSS score
+curl http://localhost:8000/api/cve/epss/CVE-2021-44228
+```
+
+### Implementation Details
+
+**Router**: `app/routers/vulnkillchain.py`
+
+**Key Features**:
+- 80+ hardcoded CVE-to-MITRE ATT&CK technique mappings
+- 120+ keyword patterns for inferring techniques from CVE descriptions
+- 196+ base techniques + 100+ sub-techniques mapped to 14 MITRE tactics
+- Mermaid flowchart generation for kill chain visualization
+- Vulnerability intelligence extraction (patches, mitigations, detection, recovery)
+
+**Data Sources**:
+- NVD API (https://services.nvd.nist.gov/rest/json/cves/2.0)
+- CISA KEV (https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json)
+- EPSS API (https://api.first.org/data/v1/epss)
+
+**Rate Limits**:
+- NVD API: ~5 requests per 30 seconds without API key
+- Set `NVD_API_KEY` in .env for higher rate limits
+
+### Adding New CVE Mappings
+
+To add hardcoded ATT&CK mappings for specific CVEs, edit `CVE_ATTACK_MAPPING` dict in `app/routers/vulnkillchain.py`:
+
+```python
+CVE_ATTACK_MAPPING = {
+    "CVE-YYYY-NNNNN": ["T1234", "T5678.001"],  # Base or sub-techniques
+}
+```
+
+Verify technique exists in `technique_to_tactic()` function, or add new mapping.

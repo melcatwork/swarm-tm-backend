@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings, get_settings
-from .routers import threat_intel, iac_upload, swarm, archive, llm
+from .routers import threat_intel, iac_upload, swarm, archive, llm, vulnkillchain
 
 # Configure logging
 logging.basicConfig(
@@ -145,6 +145,7 @@ app.include_router(iac_upload.router)
 app.include_router(swarm.router)
 app.include_router(archive.router)
 app.include_router(llm.router)
+app.include_router(vulnkillchain.router)
 
 
 @app.get("/api/health")
