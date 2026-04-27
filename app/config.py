@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # AWS Bedrock (bearer token authentication for Anthropic models)
     AWS_BEARER_TOKEN_BEDROCK: Optional[str] = None
     AWS_REGION: str = "us-east-1"
-    BEDROCK_MODEL: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    BEDROCK_MODEL: str = "anthropic.claude-3-sonnet-20240229-v1:0"
 
     # Direct Anthropic API (alternative)
     ANTHROPIC_API_KEY: Optional[str] = None
