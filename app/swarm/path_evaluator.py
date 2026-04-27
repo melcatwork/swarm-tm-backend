@@ -169,21 +169,20 @@ versus speculative. Return JSON only.
             system: System prompt
             user: User prompt
             max_tokens: Maximum tokens to generate (ignored for Bedrock compatibility)
-            temperature: Sampling temperature
+            temperature: Sampling temperature (ignored for Bedrock compatibility)
 
         Returns:
             LLM response text
         """
         # Use the LLM client's call method (CrewAI LLM interface)
-        # Note: max_tokens parameter removed due to Bedrock incompatibility
-        # LLM uses max_tokens configured in crews.py get_llm() instead
+        # Note: max_tokens and temperature parameters removed due to Bedrock incompatibility
+        # LLM uses configuration from crews.py get_llm() instead (settings.LLM_MAX_TOKENS, settings.LLM_TEMPERATURE)
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
         response = self.llm.call(
             messages=messages,
-            temperature=temperature,
         )
         return response
 
