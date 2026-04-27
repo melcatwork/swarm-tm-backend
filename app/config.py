@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # AWS Bedrock (bearer token authentication for Anthropic models)
     AWS_BEARER_TOKEN_BEDROCK: Optional[str] = None
     AWS_REGION: str = "us-east-1"
-    BEDROCK_MODEL: str = "us.anthropic.claude-3-5-sonnet-20240620-v1:0"
+    BEDROCK_MODEL: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 
     # Direct Anthropic API (alternative)
     ANTHROPIC_API_KEY: Optional[str] = None
@@ -198,10 +198,18 @@ class Settings(BaseSettings):
         """
         return [
             {
+                "id": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                "name": "Claude Sonnet 4.5 (Cross-Region)",
+                "provider": "bedrock",
+                "description": "Latest Claude Sonnet 4.5 via inference profile (recommended)",
+                "context_window": 200000,
+                "max_tokens": 8192
+            },
+            {
                 "id": "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
                 "name": "Claude 3.5 Sonnet (Cross-Region)",
                 "provider": "bedrock",
-                "description": "Claude 3.5 Sonnet via inference profile (recommended)",
+                "description": "Claude 3.5 Sonnet via inference profile",
                 "context_window": 200000,
                 "max_tokens": 8192
             },
