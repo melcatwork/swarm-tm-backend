@@ -27,7 +27,7 @@ services:
       # AWS Bedrock Configuration (RECOMMENDED for Zeabur)
       AWS_BEARER_TOKEN_BEDROCK: ${AWS_BEARER_TOKEN_BEDROCK}
       AWS_REGION: us-east-1
-      BEDROCK_MODEL: anthropic.claude-3-sonnet-20240229-v1:0
+      BEDROCK_MODEL: anthropic.claude-3-5-sonnet-20241022-v2:0
 
       # Anthropic API Configuration (alternative)
       # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
