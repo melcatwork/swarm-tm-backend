@@ -300,8 +300,9 @@ def build_exploration_crew(
             f"    ]\n"
             f"  }}\n"
             f"]\n\n"
-            f"Return a JSON array of 2-4 attack paths following this EXACT structure. "
-            f"Ensure EVERY field in EVERY step is populated with valid, specific data from the asset graph."
+            f"Return a JSON array of EXACTLY 2 attack paths following this EXACT structure. "
+            f"Ensure EVERY field in EVERY step is populated with valid, specific data from the asset graph. "
+            f"Keep each attack path to 3-5 steps maximum to ensure complete JSON generation."
         )
 
         expected_output = (
