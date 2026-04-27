@@ -42,7 +42,7 @@ services:
 
       # LLM Performance Configuration
       LLM_TEMPERATURE: 0.5
-      LLM_MAX_TOKENS: 4096
+      LLM_MAX_TOKENS: 8192
       LLM_CONTEXT_WINDOW: 32000
       LLM_TIMEOUT_SECONDS: 600
       LLM_RETRY_ATTEMPTS: 3
