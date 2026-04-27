@@ -883,6 +883,106 @@ def build_evaluation_crew(
     return crew
 
 
+def parse_evaluation_results(crew_output) -> List[Dict]:
+    """
+    Parse evaluation results from evaluation crew execution.
+
+    Extracts JSON output from each evaluation task, handles markdown code blocks,
+    and combines all evaluation scores into a single list.
+
+    Args:
+        crew_output: Output from evaluation crew.kickoff()
+
+    Returns:
+        List of evaluation score dictionaries with fields like:
+        - path_name (string)
+        - feasibility_score/detection_score/impact_score/novelty_score/coherence_score (number 1-10)
+        - justification (string)
+    """
+    all_scores = []
+
+    try:
+        # CrewAI crew output can be a string or have task outputs
+        if hasattr(crew_output, "tasks_output"):
+            task_outputs = crew_output.tasks_output
+        elif hasattr(crew_output, "task_outputs"):
+            task_outputs = crew_output.task_outputs
+        else:
+            task_outputs = [crew_output]
+
+        for idx, task_output in enumerate(task_outputs):
+            try:
+                # Extract the raw output text
+                if hasattr(task_output, "raw"):
+                    output_text = task_output.raw
+                elif hasattr(task_output, "result"):
+                    output_text = task_output.result
+                else:
+                    output_text = str(task_output)
+
+                logger.debug(f"Processing evaluation task output {idx + 1}: {output_text[:200]}...")
+
+                # Strip markdown code blocks if present
+                output_text = output_text.strip()
+                if output_text.startswith("```"):
+                    output_text = re.sub(r"^```(?:json)?", "", output_text, flags=re.IGNORECASE)
+                    output_text = re.sub(r"```$", "", output_text)
+                    output_text = output_text.strip()
+
+                logger.info(f"Full evaluation response from task {idx + 1}:\n{output_text}")
+
+                # Parse JSON
+                try:
+                    parsed_output = json.loads(output_text)
+                    logger.info(f"✓ Successfully parsed evaluation JSON from task {idx + 1}")
+                except json.JSONDecodeError as json_err:
+                    logger.error(f"✗ JSON parse error in evaluation task {idx + 1}: {json_err}")
+                    logger.debug(f"Failed JSON content: {output_text[:500]}")
+                    continue
+
+                # Handle both array and single object
+                if isinstance(parsed_output, list):
+                    score_objects = parsed_output
+                    logger.info(f"Evaluation task {idx + 1}: Parsed as list with {len(score_objects)} items")
+                elif isinstance(parsed_output, dict):
+                    score_objects = [parsed_output]
+                    logger.info(f"Evaluation task {idx + 1}: Treating dict as single score")
+                else:
+                    logger.warning(f"Evaluation task {idx + 1} output is neither list nor dict, skipping")
+                    continue
+
+                # Validate and add score objects
+                for score_obj in score_objects:
+                    if not isinstance(score_obj, dict):
+                        logger.warning(f"Evaluation task {idx + 1}: Score object is not a dict, skipping")
+                        continue
+
+                    if "path_name" not in score_obj:
+                        logger.warning(f"Evaluation task {idx + 1}: Score object missing 'path_name', skipping")
+                        continue
+
+                    # Validate at least one score field exists
+                    score_fields = ["feasibility_score", "detection_score", "impact_score", "novelty_score", "coherence_score"]
+                    has_score = any(field in score_obj for field in score_fields)
+                    if not has_score:
+                        logger.warning(f"Evaluation task {idx + 1}: Score object for '{score_obj['path_name']}' has no score fields, skipping")
+                        continue
+
+                    all_scores.append(score_obj)
+                    logger.debug(f"Added score for path '{score_obj['path_name']}'")
+
+            except Exception as task_error:
+                logger.error(f"Error processing evaluation task {idx + 1}: {task_error}")
+                continue
+
+        logger.info(f"Parsed {len(all_scores)} evaluation scores from {len(task_outputs)} tasks")
+
+    except Exception as e:
+        logger.error(f"Error parsing evaluation results: {e}")
+
+    return all_scores
+
+
 def aggregate_scores(
     exploration_paths: List[Dict],
     evaluation_results,
@@ -909,8 +1009,8 @@ def aggregate_scores(
     """
     logger.info("Aggregating evaluation scores with attack paths")
 
-    # Parse evaluation results to extract scores
-    evaluation_scores = parse_exploration_results(evaluation_results)
+    # Parse evaluation results to extract scores (NOT exploration results!)
+    evaluation_scores = parse_evaluation_results(evaluation_results)
 
     # Build lookup dictionaries by path_name for each score type
     feasibility_lookup = {}
