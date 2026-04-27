@@ -390,6 +390,8 @@ def parse_exploration_results(crew_output) -> List[Dict]:
 
                 # Log the cleaned output for debugging model responses
                 logger.debug(f"Cleaned output from task {idx + 1} (first 1000 chars):\n{output_text[:1000]}")
+                # Log full output at INFO level to diagnose empty steps issue
+                logger.info(f"Full LLM response from task {idx + 1}:\n{output_text}")
 
                 # Parse JSON
                 try:
