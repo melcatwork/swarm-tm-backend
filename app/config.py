@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # LLM Performance Configuration (model-agnostic)
     LLM_TEMPERATURE: float = 0.5          # Lower = more consistent, higher = more creative (0.0-1.0)
-    LLM_MAX_TOKENS: int = 8192            # Maximum tokens per response (8192 for Claude 3.5 Sonnet)
+    LLM_MAX_TOKENS: int = 64000           # Maximum tokens per response (extended for Claude 4 models)
     LLM_CONTEXT_WINDOW: int = 32000       # Maximum context window size
     LLM_TIMEOUT_SECONDS: int = 600        # Timeout for LLM operations (10 minutes)
     LLM_RETRY_ATTEMPTS: int = 3           # Number of retry attempts on failure
@@ -203,7 +203,7 @@ class Settings(BaseSettings):
                 "provider": "bedrock",
                 "description": "Latest Claude Sonnet 4.5 via inference profile (recommended)",
                 "context_window": 200000,
-                "max_tokens": 8192
+                "max_tokens": 64000
             },
             {
                 "id": "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
@@ -253,7 +253,7 @@ class Settings(BaseSettings):
                 "provider": "anthropic",
                 "description": "Most powerful Claude model (2025)",
                 "context_window": 200000,
-                "max_tokens": 8192
+                "max_tokens": 64000
             },
             {
                 "id": "claude-sonnet-4-6",
@@ -261,7 +261,7 @@ class Settings(BaseSettings):
                 "provider": "anthropic",
                 "description": "Balanced Claude 4 model (2025)",
                 "context_window": 200000,
-                "max_tokens": 8192
+                "max_tokens": 64000
             },
             {
                 "id": "claude-haiku-4-5-20251001",
@@ -269,7 +269,7 @@ class Settings(BaseSettings):
                 "provider": "anthropic",
                 "description": "Fastest Claude 4 model (2025)",
                 "context_window": 200000,
-                "max_tokens": 8192
+                "max_tokens": 64000
             }
         ]
 
