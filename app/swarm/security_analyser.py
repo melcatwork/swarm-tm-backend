@@ -165,14 +165,14 @@ Return ONLY the JSON array with no other text.
         # Use the LLM client's call method (CrewAI LLM interface)
         try:
             # CrewAI LLM instances have a call() method
+            # Note: max_tokens and temperature removed for Bedrock compatibility
+            # LLM uses configuration from crews.py get_llm() instead
             messages = [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ]
             response = self.llm.call(
                 messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
             )
             return response
         except Exception as e:
