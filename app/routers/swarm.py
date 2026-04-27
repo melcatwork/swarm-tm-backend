@@ -465,7 +465,7 @@ def _build_threat_intel_context() -> tuple[str, int]:
         # Sort by citation_score (highest first) and take top 20
         sorted_items = sorted(
             all_items,
-            key=lambda x: x.get("citation_score", 0),
+            key=lambda x: x.citation_score,
             reverse=True,
         )
         items = sorted_items[:20]
@@ -477,9 +477,9 @@ def _build_threat_intel_context() -> tuple[str, int]:
         news = []
 
         for item in items:
-            category = item.get("category", "").lower()
-            title = item.get("title", "")
-            summary = item.get("summary", "")
+            category = item.category.lower()
+            title = item.title
+            summary = item.summary
 
             if category == "cve":
                 cves.append(f"{title}: {summary[:100]}")
