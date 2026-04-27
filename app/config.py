@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # AWS Bedrock (bearer token authentication for Anthropic models)
     AWS_BEARER_TOKEN_BEDROCK: Optional[str] = None
     AWS_REGION: str = "us-east-1"
-    BEDROCK_MODEL: str = "anthropic.claude-3-sonnet-20240229-v1:0"
+    BEDROCK_MODEL: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
     # Direct Anthropic API (alternative)
     ANTHROPIC_API_KEY: Optional[str] = None
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # LLM Performance Configuration (model-agnostic)
     LLM_TEMPERATURE: float = 0.5          # Lower = more consistent, higher = more creative (0.0-1.0)
-    LLM_MAX_TOKENS: int = 4096            # Maximum tokens per response
+    LLM_MAX_TOKENS: int = 8192            # Maximum tokens per response (8192 for Claude 3.5 Sonnet)
     LLM_CONTEXT_WINDOW: int = 32000       # Maximum context window size
     LLM_TIMEOUT_SECONDS: int = 600        # Timeout for LLM operations (10 minutes)
     LLM_RETRY_ATTEMPTS: int = 3           # Number of retry attempts on failure
