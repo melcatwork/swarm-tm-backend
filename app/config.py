@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # LLM Provider Configuration
-    LLM_PROVIDER: str = "ollama"
+    LLM_PROVIDER: str = "bedrock"
 
     # AWS Bedrock (bearer token authentication for Anthropic models)
     AWS_BEARER_TOKEN_BEDROCK: Optional[str] = None
@@ -17,18 +17,21 @@ class Settings(BaseSettings):
 
     # Direct Anthropic API (alternative)
     ANTHROPIC_API_KEY: Optional[str] = None
-    ANTHROPIC_MODEL: str = "claude-sonnet-4-6"
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20240620"
 
     # Ollama (local LLM, no API key needed)
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen3:14b"
 
+    # OpenAI API (alternative - not recommended for threat modeling)
+    OPENAI_API_KEY: Optional[str] = None
+
     # LLM Performance Configuration (model-agnostic)
-    LLM_TEMPERATURE: float = 0.5
-    LLM_MAX_TOKENS: int = 4096
-    LLM_CONTEXT_WINDOW: int = 32000
-    LLM_TIMEOUT_SECONDS: int = 600
-    LLM_RETRY_ATTEMPTS: int = 3
+    LLM_TEMPERATURE: float = 0.5          # Lower = more consistent, higher = more creative (0.0-1.0)
+    LLM_MAX_TOKENS: int = 4096            # Maximum tokens per response
+    LLM_CONTEXT_WINDOW: int = 32000       # Maximum context window size
+    LLM_TIMEOUT_SECONDS: int = 600        # Timeout for LLM operations (10 minutes)
+    LLM_RETRY_ATTEMPTS: int = 3           # Number of retry attempts on failure
 
     # Database
     DATABASE_URL: str = "sqlite:///data/swarm_tm.db"

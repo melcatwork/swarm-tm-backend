@@ -22,20 +22,30 @@ services:
     # Note: Sensitive values should be set in Zeabur Dashboard for security
     env:
       # LLM Provider Configuration (choose one)
-      LLM_PROVIDER: anthropic  # Options: ollama, bedrock, anthropic
+      LLM_PROVIDER: bedrock  # Options: ollama, bedrock, anthropic
+
+      # AWS Bedrock Configuration (RECOMMENDED for Zeabur)
+      AWS_BEARER_TOKEN_BEDROCK: ${AWS_BEARER_TOKEN_BEDROCK}
+      AWS_REGION: us-east-1
+      BEDROCK_MODEL: anthropic.claude-3-sonnet-20240229-v1:0
+
+      # Anthropic API Configuration (alternative)
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # ANTHROPIC_MODEL: claude-3-5-sonnet-20240620
 
       # Ollama Configuration (local LLM - requires GPU)
       # OLLAMA_BASE_URL: http://host.docker.internal:11434
       # OLLAMA_MODEL: qwen3.5:27b
 
-      # AWS Bedrock Configuration (uncomment if using)
-      # AWS_BEARER_TOKEN_BEDROCK: ${AWS_BEARER_TOKEN_BEDROCK}
-      # AWS_REGION_NAME: us-east-1
-      # BEDROCK_MODEL: bedrock/anthropic.claude-sonnet-4-20250514-v1:0
+      # OpenAI API (not recommended for threat modeling)
+      OPENAI_API_KEY: ""
 
-      # Anthropic API Configuration (RECOMMENDED for Zeabur)
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      ANTHROPIC_MODEL: claude-3-5-sonnet-20240620
+      # LLM Performance Configuration
+      LLM_TEMPERATURE: 0.5
+      LLM_MAX_TOKENS: 4096
+      LLM_CONTEXT_WINDOW: 32000
+      LLM_TIMEOUT_SECONDS: 600
+      LLM_RETRY_ATTEMPTS: 3
 
       # CORS Configuration (update with your frontend URL after deployment)
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
